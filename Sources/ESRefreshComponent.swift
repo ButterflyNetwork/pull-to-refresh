@@ -57,6 +57,8 @@ open class ESRefreshComponent: UIView {
     /// @param tag observing
     fileprivate var isObservingScrollView = false
     fileprivate var isIgnoreObserving = false
+    fileprivate var offsetObservation: NSKeyValueObservation?
+    fileprivate var sizeObservation: NSKeyValueObservation?
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
@@ -146,23 +148,20 @@ open class ESRefreshComponent: UIView {
     }
     
     //  ScrollView contentSize change action
-    public func sizeChangeAction(object: AnyObject?, change: [NSKeyValueChangeKey : Any]?) {
+    public func sizeChangeAction(scrollView: UIScrollView, value: NSKeyValueObservedChange<CGSize>) {
         
     }
     
     //  ScrollView offset change action
-    public func offsetChangeAction(object: AnyObject?, change: [NSKeyValueChangeKey : Any]?) {
-        
+    public func offsetChangeAction(scrollView: UIScrollView, value: NSKeyValueObservedChange<CGPoint>) {
     }
     
 }
 
-extension ESRefreshComponent /* KVO methods */ {
-    
-    fileprivate static var context = "ESRefreshKVOContext"
-    fileprivate static let offsetKeyPath = "contentOffset"
-    fileprivate static let contentSizeKeyPath = "contentSize"
-    
+// MARK: - KVO
+
+extension ESRefreshComponent {
+
     public func ignoreObserver(_ ignore: Bool = false) {
         if let scrollView = scrollView {
             scrollView.isScrollEnabled = !ignore
@@ -171,39 +170,44 @@ extension ESRefreshComponent /* KVO methods */ {
     }
     
     fileprivate func addObserver(_ view: UIView?) {
-        if let scrollView = view as? UIScrollView, !isObservingScrollView {
-            scrollView.addObserver(self, forKeyPath: ESRefreshComponent.offsetKeyPath, options: [.initial, .new], context: &ESRefreshComponent.context)
-            scrollView.addObserver(self, forKeyPath: ESRefreshComponent.contentSizeKeyPath, options: [.initial, .new], context: &ESRefreshComponent.context)
-            isObservingScrollView = true
+        guard
+            let scrollView = view as? UIScrollView,
+            !isObservingScrollView
+        else { return }
+
+        offsetObservation = scrollView.observe(
+            \.contentOffset,
+            options: [.initial, .new]
+        ) { [weak self] sv, value in
+            guard
+                let `self` = self,
+                !self.isIgnoreObserving
+            else { return }
+
+            self.offsetChangeAction(scrollView: sv, value: value)
         }
+        sizeObservation = scrollView.observe(
+            \.contentSize,
+            options: [.initial, .new]
+        ) { [weak self] sv, value in
+            guard
+                let `self` = self,
+                !self.isIgnoreObserving
+            else { return }
+
+            self.sizeChangeAction(scrollView: sv, value: value)
+        }
+
+        isObservingScrollView = true
     }
     
     fileprivate func removeObserver() {
-        if let scrollView = superview as? UIScrollView, isObservingScrollView {
-            scrollView.removeObserver(self, forKeyPath: ESRefreshComponent.offsetKeyPath, context: &ESRefreshComponent.context)
-            scrollView.removeObserver(self, forKeyPath: ESRefreshComponent.contentSizeKeyPath, context: &ESRefreshComponent.context)
-            isObservingScrollView = false
-        }
-    }
-    
-    override open func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-        if context == &ESRefreshComponent.context {
-            guard isUserInteractionEnabled == true && isHidden == false else {
-                return
-            }
-            if keyPath == ESRefreshComponent.contentSizeKeyPath {
-                if isIgnoreObserving == false {
-                    sizeChangeAction(object: object as AnyObject?, change: change)
-                }
-            } else if keyPath == ESRefreshComponent.offsetKeyPath {
-                if isIgnoreObserving == false {
-                    offsetChangeAction(object: object as AnyObject?, change: change)
-                }
-            }
-        } else {
+        guard isObservingScrollView else { return }
 
-        }
+        offsetObservation?.invalidate()
+        sizeObservation?.invalidate()
+        isObservingScrollView = false
     }
-    
+
 }
 
